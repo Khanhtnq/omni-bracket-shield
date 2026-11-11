@@ -1,0 +1,24 @@
+{
+  "name": "omni-bracket-shield",
+  "version": "1.0.0",
+  "description": "Low-latency cross-chain OCO stop-loss, trailing-stop, anti-wick & arbitrage vault powered by Reactive Omni (~1s CometBFT finality) across Base Sepolia (200ms) and Unichain Sepolia (1s).",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "doctor": "tsx src/cli.ts doctor",
+    "benchmark": "tsx src/cli.ts benchmark",
+    "fee-calc": "tsx src/cli.ts fee-calc",
+    "live-loop": "tsx src/cli.ts live-loop"
+  },
+  "dependencies": {
+    "viem": "^2.23.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.7"
+  }
+}
