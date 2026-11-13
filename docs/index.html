@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OmniBracket Shield — Official Demo Video Player (Reactive Omni Buildathon)</title>
+  <style>
+    :root {
+      --bg: #07090e;
+      --card: #0d121d;
+      --border: #1a2333;
+      --cyan: #38bdf8;
+      --emerald: #10b981;
+      --orange: #f59e0b;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 16px;
+    }
+    .container {
+      width: 100%;
+      max-width: 1100px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 20px;
+    }
+    .title-group h1 {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #38bdf8, #10b981);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .title-group p {
+      color: var(--muted);
+      font-size: 14px;
+      margin-top: 4px;
+    }
+    .badge-bar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(56, 189, 248, 0.1);
+      color: var(--cyan);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+    .badge.emerald {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--emerald);
+      border-color: rgba(16, 185, 129, 0.3);
+    }
+    .video-wrapper {
+      position: relative;
+      background: #000;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+      aspect-ratio: 16 / 9;
+      width: 100%;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: contain;
+    }
+    .controls-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 800px) {
+      .controls-grid { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .card h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--cyan);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .chapters-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .chapter-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-size: 13px;
+    }
+    .chapter-item:hover {
+      background: rgba(56, 189, 248, 0.08);
+      border-color: rgba(56, 189, 248, 0.3);
+    }
+    .chapter-time {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      color: var(--emerald);
+      font-weight: 600;
+    }
+    .meta-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .meta-table td {
+      padding: 8px 4px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .meta-table td:first-child {
+      color: var(--muted);
+      width: 40%;
+    }
+    .meta-table td:last-child {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      color: var(--text);
+      text-align: right;
+    }
+    .btn-download {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 10px;
+      border-radius: 6px;
+      background: linear-gradient(135deg, #0284c7, #059669);
+      color: #fff;
+      font-weight: 600;
+      font-size: 13px;
+      text-decoration: none;
+      margin-top: 14px;
+      transition: opacity 0.2s;
+    }
+    .btn-download:hover { opacity: 0.9; }
+
+    /* Explorer links section */
+    .explorer-section {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .explorer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+    }
+    .explorer-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .explorer-card .label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--muted);
+    }
+    .explorer-card a {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      color: var(--cyan);
+      text-decoration: none;
+      word-break: break-all;
+    }
+    .explorer-card a:hover {
+      color: var(--emerald);
+      text-decoration: underline;
+    }
+    .loop-receipts {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .loop-item {
+      background: rgba(18, 25, 40, 0.6);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+    }
+    .loop-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .loop-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+    }
+    .loop-badge {
+      font-size: 11px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--emerald);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .loop-flow {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+    }
+    .loop-flow-step {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      flex-wrap: wrap;
+    }
+    .loop-flow-step .step-tag {
+      color: var(--cyan);
+      min-width: 130px;
+    }
+    .loop-flow-step a {
+      color: var(--emerald);
+      text-decoration: none;
+    }
+    .loop-flow-step a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="title-group">
+        <h1>OmniBracket Shield — Official Demo Video</h1>
+        <p>Sub-Second Cross-Chain OCO Stop-Loss & Arbitrage Engine on Reactive Omni (~1s Finality)</p>
+      </div>
+      <div class="badge-bar">
+        <span class="badge">Track 1: Every Second Counts</span>
+        <span class="badge emerald">Duration: 1m45s (&lt; 3m)</span>
+        <span class="badge">1080p 30fps H.264</span>
+      </div>
+    </div>
+
+    <div class="video-wrapper">
+      <video id="demoVideo" controls autoplay muted playsinline poster="">
+        <source src="./demo.mp4" type="video/mp4">
+        Your browser does not support HTML5 video streaming. Please use the direct download link below.
+      </video>
+    </div>
+
+    <div class="controls-grid">
+      <div class="card">
+        <h3>📑 Video Chapters & Direct Timestamps</h3>
+        <div class="chapters-list">
+          <div class="chapter-item" onclick="seekVideo(0)">
+            <span><strong>Chapter 1:</strong> Title & The Sub-Second L2 Problem</span>
+            <span class="chapter-time">0:00</span>
+          </div>
+          <div class="chapter-item" onclick="seekVideo(20)">
+            <span><strong>Chapter 2:</strong> Latency & Alpha Benchmark (npm run benchmark)</span>
+            <span class="chapter-time">0:20</span>
+          </div>
+          <div class="chapter-item" onclick="seekVideo(42)">
+            <span><strong>Chapter 3:</strong> Multi-Origin Reactive Omni Architecture</span>
+            <span class="chapter-time">0:42</span>
+          </div>
+          <div class="chapter-item" onclick="seekVideo(66)">
+            <span><strong>Chapter 4:</strong> Security & Verification Suite (18 Foundry + 13 Vitest)</span>
+            <span class="chapter-time">1:06</span>
+          </div>
+          <div class="chapter-item" onclick="seekVideo(86)">
+            <span><strong>Chapter 5:</strong> Live Multi-Chain Deployment & Callback Receipts</span>
+            <span class="chapter-time">1:26</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>ℹ️ Technical Metadata</h3>
+        <table class="meta-table">
+          <tr><td>Target Resolution</td><td>1920 &times; 1080 (16:9)</td></tr>
+          <tr><td>Frame Rate</td><td>30.0 fps (CFR)</td></tr>
+          <tr><td>Video Codec</td><td>H.264 (libx264, yuv420p)</td></tr>
+          <tr><td>Target Duration</td><td>105s (~1m45s)</td></tr>
+          <tr><td>Base Sepolia</td><td>Chain ID 84532 (200ms)</td></tr>
+          <tr><td>Unichain Sepolia</td><td>Chain ID 1301 (1s)</td></tr>
+          <tr><td>Reactive Lasna</td><td>Chain ID 5318007 (~1s)</td></tr>
+        </table>
+        <a href="./demo.mp4" class="btn-download" download>
+          ⬇️ Download Raw MP4 (Offline Mirror)
+        </a>
+      </div>
+    </div>
+
+    <!-- Live Verified On-Chain Explorer Links Card -->
+    <div class="card explorer-section">
+      <h3>🔗 Live Verified On-Chain Explorer Links</h3>
+      
+      <div class="explorer-grid">
+        <div class="explorer-card">
+          <span class="label">Base Sepolia Price Pool</span>
+          <a href="https://sepolia.basescan.org/address/0xb16A318355Ecc265Afd0aCa51EE01C3f0aA91551" target="_blank" rel="noopener">0xb16A3183...1551</a>
+        </div>
+        <div class="explorer-card">
+          <span class="label">Unichain Sepolia Price Pool</span>
+          <a href="https://sepolia.uniscan.xyz/address/0xb16A318355Ecc265Afd0aCa51EE01C3f0aA91551" target="_blank" rel="noopener">0xb16A3183...1551</a>
+        </div>
+        <div class="explorer-card">
+          <span class="label">Base Sepolia Vault (Sourcify)</span>
+          <a href="https://sepolia.basescan.org/address/0x24E60A1bcEB266DE6c44f0EE4e411e80fDD3289f" target="_blank" rel="noopener">0x24E60A1b...289f</a>
+        </div>
+        <div class="explorer-card">
+          <span class="label">Reactive Lasna Sentinel (Sourcify)</span>
+          <a href="https://lasna.reactscan.net/address/0x2376EBA740136e63DBF172B8148B1D7362897857" target="_blank" rel="noopener">0x2376EBA7...7857</a>
+        </div>
+      </div>
+
+      <div class="loop-receipts">
+        <!-- Loop 1 -->
+        <div class="loop-item">
+          <div class="loop-header">
+            <span class="loop-title">[LOOP-1] Hard Stop-Loss ($3,000 -> $2,820, Pos #2 -> 2,805.96 vUSDC)</span>
+            <span class="loop-badge">1.0s on-chain (5 Base Blocks, 2,796ms e2e)</span>
+          </div>
+          <div class="loop-flow">
+            <div class="loop-flow-step">
+              <span class="step-tag">Origin Event (Base):</span>
+              <a href="https://sepolia.basescan.org/tx/0x253bca14c49915d4c8bfa0125c82937a4790ffc1ea8e15d1aa32bb459915e061" target="_blank" rel="noopener">0x253bca14c499...bb459915e061</a>
+            </div>
+            <div class="loop-flow-step">
+              <span class="step-tag">Lasna react():</span>
+              <a href="https://lasna.reactscan.net/tx/0x40d9cec9b511d8ba9f8ed0df53999ffa536704ed709a72c355a24466fdee156f" target="_blank" rel="noopener">0x40d9cec9b511...4466fdee156f</a>
+            </div>
+            <div class="loop-flow-step">
+              <span class="step-tag">CallbackProxy (Base):</span>
+              <a href="https://sepolia.basescan.org/tx/0xee5ba0a0160d6b2e607685fda4e1cdf73655295e96d56def21d343ceaab2d2eb" target="_blank" rel="noopener">0xee5ba0a0160d...d343ceaab2d2eb</a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Loop 2 -->
+        <div class="loop-item">
+          <div class="loop-header">
+            <span class="loop-title">[LOOP-2] Take-Profit Settlement ($3,000 -> $3,350, Pos #3 -> 3,333.33 vUSDC)</span>
+            <span class="loop-badge">1.0s on-chain (5 Base Blocks, 3,428ms e2e)</span>
+          </div>
+          <div class="loop-flow">
+            <div class="loop-flow-step">
+              <span class="step-tag">Origin Event (Base):</span>
+              <a href="https://sepolia.basescan.org/tx/0x529eaba0133a218aea1269b708e1cce8e60700d05ab5492a8c6eeecc8e3a2e11" target="_blank" rel="noopener">0x529eaba0133a...eeecc8e3a2e11</a>
+            </div>
+            <div class="loop-flow-step">
+              <span class="step-tag">Lasna react():</span>
+              <a href="https://lasna.reactscan.net/tx/0x2ef855cbc83b744f9b465c5fd50c4ccf856d46f9bd161abd988886307a81a3ee" target="_blank" rel="noopener">0x2ef855cbc83b...88886307a81a3ee</a>
+            </div>
+            <div class="loop-flow-step">
+              <span class="step-tag">CallbackProxy (Base):</span>
+              <a href="https://sepolia.basescan.org/tx/0xd8014433fdc376aab097ad3f630a87e4c0eabb22f5884e7b1e284c2a03f95b8f" target="_blank" rel="noopener">0xd8014433fdc3...284c2a03f95b8f</a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Loop 3 -->
+        <div class="loop-item">
+          <div class="loop-header">
+            <span class="loop-title">[LOOP-3] Dynamic Trailing Stop ($3,000 -> $3,220 Rally -> $3,080 Pullback, Pos #4)</span>
+            <span class="loop-badge">1.0s on-chain (5 Base Blocks, 4,121ms e2e)</span>
+          </div>
+          <div class="loop-flow">
+            <div class="loop-flow-step">
+              <span class="step-tag">Origin Event (Base):</span>
+              <a href="https://sepolia.basescan.org/tx/0x78c238fdbf039d8b0b338dbb8628d03b52b3918c5da885beab8c75524c2cbb8e" target="_blank" rel="noopener">0x78c238fdbf03...75524c2cbb8e</a>
+            </div>
+            <div class="loop-flow-step">
+              <span class="step-tag">Lasna react():</span>
+              <a href="https://lasna.reactscan.net/tx/0x3204587016283d4c4a895bde817bad2b788ed851e6b352d5f6ce08919f2865ec" target="_blank" rel="noopener">0x320458701628...ce08919f2865ec</a>
+            </div>
+            <div class="loop-flow-step">
+              <span class="step-tag">CallbackProxy (Base):</span>
+              <a href="https://sepolia.basescan.org/tx/0x0497c01950b0607d8c9de0fff11c2b8f214cd894d89659e866ee98971c236069" target="_blank" rel="noopener">0x0497c01950b0...ee98971c236069</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function seekVideo(seconds) {
+      const v = document.getElementById('demoVideo');
+      if (v) {
+        v.currentTime = seconds;
+        v.play();
+      }
+    }
+  </script>
+</body>
+</html>

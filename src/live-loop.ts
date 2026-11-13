@@ -311,7 +311,7 @@ export async function executeAndMeasureLiveLoop(opts: {
   });
   const triggerReceipt = await basePublic.waitForTransactionReceipt({ hash: originTriggerTxHash });
 
-  const timeoutMs = opts.pollTimeoutMs ?? 45_000;
+  const timeoutMs = opts.pollTimeoutMs ?? 120_000;
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {

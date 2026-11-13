@@ -157,7 +157,7 @@ forge script script/DeployAndTriggerOmni.s.sol:WireVaultOnLasna \
 
 ### Step 4 — Trigger Live Cross-Chain Loop & Measure End-to-End Latency
 ```bash
-npm run live-loop
+npm run live-loop --all-three
 ```
 Inspect callback delivery records directly on Reactive Lasna:
 ```bash
@@ -165,6 +165,18 @@ cast call 0x8888888888888888888888888888888888888888 \
   "getCallbacks(uint256)((uint256,address,uint256,uint256,uint256,bytes)[])" \
   $REACTIVE_TX_HASH --rpc-url https://lasna-rpc.rnk.dev/
 ```
+
+### Live Verified Testnet Deployments, Proofs & `< 2m` Demo Video
+- **Demo Video (`1m45s`, `1920x1080` `30fps`)**: [`docs/demo.mp4`](./docs/demo.mp4) | Interactive HTML5 Player: [`docs/index.html`](./docs/index.html)
+- **Full On-Chain Proof Report**: [`LIVE_ONCHAIN_PROOFS.md`](./LIVE_ONCHAIN_PROOFS.md)
+- **Base Sepolia Pool (`84532`)**: [`0xb16A318355Ecc265Afd0aCa51EE01C3f0aA91551`](https://sepolia.basescan.org/address/0xb16A318355Ecc265Afd0aCa51EE01C3f0aA91551)
+- **Unichain Sepolia Pool (`1301`)**: [`0xb16A318355Ecc265Afd0aCa51EE01C3f0aA91551`](https://sepolia.uniscan.xyz/address/0xb16A318355Ecc265Afd0aCa51EE01C3f0aA91551)
+- **Reactive Lasna Sentinel (`5318007`)**: [`0x2376EBA740136e63DBF172B8148B1D7362897857`](https://lasna.reactscan.net/address/0x2376EBA740136e63DBF172B8148B1D7362897857) *(Sourcify Verified)*
+- **Base Sepolia Destination Vault (`84532`)**: [`0x24E60A1bcEB266DE6c44f0EE4e411e80fDD3289f`](https://sepolia.basescan.org/address/0x24E60A1bcEB266DE6c44f0EE4e411e80fDD3289f) *(Sourcify Verified)*
+- **Live Reactive Full-Loop Proofs (Origin -> Reactive Lasna -> Destination Callback)**:
+  - Loop 1 (Hard Stop-Loss): [`Origin 0x253bca...`](https://sepolia.basescan.org/tx/0x253bca14c49915d4c8bfa0125c82937a4790ffc1ea8e15d1aa32bb459915e061) -> [`Lasna 0x40d9ce...`](https://lasna.reactscan.net/tx/0x40d9cec9b511d8ba9f8ed0df53999ffa536704ed709a72c355a24466fdee156f) -> [`Callback 0xee5ba0...`](https://sepolia.basescan.org/tx/0xee5ba0a0160d6b2e607685fda4e1cdf73655295e96d56def21d343ceaab2d2eb) (`2,796 ms` wall-clock, `1 s` on-chain)
+  - Loop 2 (Take-Profit): [`Origin 0x529eab...`](https://sepolia.basescan.org/tx/0x529eaba0133a218aea1269b708e1cce8e60700d05ab5492a8c6eeecc8e3a2e11) -> [`Lasna 0x2ef855...`](https://lasna.reactscan.net/tx/0x2ef855cbc83b744f9b465c5fd50c4ccf856d46f9bd161abd988886307a81a3ee) -> [`Callback 0xd80144...`](https://sepolia.basescan.org/tx/0xd8014433fdc376aab097ad3f630a87e4c0eabb22f5884e7b1e284c2a03f95b8f) (`3,428 ms` wall-clock, `1 s` on-chain)
+  - Loop 3 (Trailing Stop): [`Origin 0x78c238...`](https://sepolia.basescan.org/tx/0x78c238fdbf039d8b0b338dbb8628d03b52b3918c5da885beab8c75524c2cbb8e) -> [`Lasna 0x320458...`](https://lasna.reactscan.net/tx/0x3204587016283d4c4a895bde817bad2b788ed851e6b352d5f6ce08919f2865ec) -> [`Callback 0x0497c0...`](https://sepolia.basescan.org/tx/0x0497c01950b0607d8c9de0fff11c2b8f214cd894d89659e866ee98971c236069) (`4,121 ms` wall-clock, `1 s` on-chain)
 
 ---
 
