@@ -11,7 +11,8 @@ import { AbstractCallback } from "@reactive/src/base/AbstractCallback.sol";
 import {
     OmniConstants,
     TriggerKind,
-    PositionStatus
+    PositionStatus,
+    SettledEventData
 } from "../contracts/interfaces/IOmniBracketTypes.sol";
 import { MockERC20 } from "../contracts/origin/MockERC20.sol";
 import { OmniPricePool } from "../contracts/origin/OmniPricePool.sol";
@@ -658,8 +659,8 @@ contract OmniBracketFullLoopTest is Test {
         cronLog.chainId = block.chainid;
         cronLog.contractAddress = OmniConstants.CRON_EMITTER_ADDR;
         cronLog.topic0 = OmniConstants.CRON100_TOPIC_0;
-        cronLog.opCode = 1;
-        cronLog.data = abi.encode(block.number);
+        cronLog.opCode = 2;
+        cronLog.topic1 = block.number;
 
         vm.prank(OmniConstants.OMNI_SYSTEM_CONTRACT);
         sentinel.react(cronLog);
@@ -990,5 +991,157 @@ contract OmniBracketFullLoopTest is Test {
         assertEq(treasury.balance, 1.5 ether);
         // Trader's 1 WETH escrow inside vault remains 100% intact
         assertEq(baseWeth.balanceOf(address(vault)), 1e18);
+
+        // Settle posId and verify duplicate BracketSettled + untracked BracketSettled log replay idempotence
+        sentinel.setReferenceMaxAgeSec(0);
+        vm.warp(block.timestamp + 3);
+        vm.recordLogs();
+        basePool.syncSpotPrice(2_750e18);
+        _propagateLogs(vm.getRecordedLogs(), OmniConstants.BASE_SEPOLIA_CHAIN_ID, 1);
+
+        assertEq(uint8(sentinel.getTrackedPosition(posId).status), uint8(PositionStatus.SETTLED));
+        assertEq(sentinel.completedLoops(), 1);
+
+        // Replay duplicate BracketSettled for already-settled posId AND untracked posId=999
+        SettledEventData memory fakeSettled = SettledEventData({
+            triggerKind: uint8(TriggerKind.HARD_STOP_LOSS),
+            amountIn: 1e18,
+            amountOut: 2_740e18,
+            executionPriceE18: 2_740e18,
+            originEventTimestamp: block.timestamp - 1,
+            settledAtTimestamp: block.timestamp,
+            loopLatencySec: 99
+        });
+
+        IReactive.LogRecord memory dupSettledRec;
+        dupSettledRec.chainId = OmniConstants.BASE_SEPOLIA_CHAIN_ID;
+        dupSettledRec.contractAddress = address(vault);
+        dupSettledRec.topic0 = OmniConstants.BRACKET_SETTLED_TOPIC_0;
+        dupSettledRec.topic1 = posId;
+        dupSettledRec.topic2 = uint256(uint160(trader));
+        dupSettledRec.opCode = 3;
+        dupSettledRec.data = abi.encode(fakeSettled);
+
+        vm.prank(OmniConstants.OMNI_SYSTEM_CONTRACT);
+        sentinel.react(dupSettledRec);
+        assertEq(sentinel.completedLoops(), 1, "duplicate BracketSettled must not double-count completedLoops");
+        assertNotEq(sentinel.lastConfirmedLoopLatencySec(), 99);
+
+        dupSettledRec.topic1 = 999; // untracked positionId
+        vm.prank(OmniConstants.OMNI_SYSTEM_CONTRACT);
+        sentinel.react(dupSettledRec);
+        assertEq(sentinel.completedLoops(), 1, "untracked BracketSettled must be ignored");
+        assertEq(uint8(sentinel.getTrackedPosition(999).status), uint8(PositionStatus.NONE));
+    }
+
+    function test_ReplayIdempotence_BracketSettled() public {
+        // 1. Arm position
+        vm.recordLogs();
+        vm.prank(trader);
+        uint256 posId = vault.openBracketPosition(
+            OmniBracketVault.OrderParams({
+                isBaseToQuote: true,
+                amountIn: 1e18,
+                hardStopPriceE18: 2_800e18,
+                takeProfitPriceE18: 3_400e18,
+                trailingStopBps: 0,
+                maxDislocationBps: 0,
+                maxSlippageBps: 150,
+                enableCrossPoolArb: false,
+                cooldownSec: 2,
+                ttlSeconds: 600
+            })
+        );
+        _propagateLogs(vm.getRecordedLogs(), OmniConstants.BASE_SEPOLIA_CHAIN_ID, 1);
+        assertEq(sentinel.activePositionCount(), 1);
+        assertEq(sentinel.completedLoops(), 0);
+
+        // 2. Trigger stop loss settlement via closed-loop propagation
+        sentinel.setReferenceMaxAgeSec(0);
+        vm.warp(block.timestamp + 3);
+        vm.recordLogs();
+        basePool.syncSpotPrice(2_750e18);
+        _propagateLogs(vm.getRecordedLogs(), OmniConstants.BASE_SEPOLIA_CHAIN_ID, 1);
+
+        assertEq(uint8(sentinel.getTrackedPosition(posId).status), uint8(PositionStatus.SETTLED));
+        assertEq(sentinel.completedLoops(), 1, "completedLoops should increment exactly once");
+        assertEq(sentinel.activePositionCount(), 0, "activePositionCount must be 0 after settlement");
+
+        // 3. Replay the EXACT SAME BracketSettled LogRecord a second time
+        SettledEventData memory settledData = SettledEventData({
+            triggerKind: uint8(TriggerKind.HARD_STOP_LOSS),
+            amountIn: 1e18,
+            amountOut: 2_740e18,
+            executionPriceE18: 2_740e18,
+            originEventTimestamp: block.timestamp - 1,
+            settledAtTimestamp: block.timestamp,
+            loopLatencySec: 99
+        });
+
+        IReactive.LogRecord memory settledRec;
+        settledRec.chainId = OmniConstants.BASE_SEPOLIA_CHAIN_ID;
+        settledRec.contractAddress = address(vault);
+        settledRec.topic0 = OmniConstants.BRACKET_SETTLED_TOPIC_0;
+        settledRec.topic1 = posId;
+        settledRec.topic2 = uint256(uint160(trader));
+        settledRec.opCode = 3;
+        settledRec.data = abi.encode(settledData);
+
+        vm.prank(OmniConstants.OMNI_SYSTEM_CONTRACT);
+        sentinel.react(settledRec);
+
+        assertEq(sentinel.completedLoops(), 1, "replay must not double-increment completedLoops");
+        assertEq(sentinel.activePositionCount(), 0, "activePositionCount must remain 0");
+        assertEq(uint8(sentinel.getTrackedPosition(posId).status), uint8(PositionStatus.SETTLED));
+
+        // 4. Replay the EXACT SAME BracketSettled LogRecord a third time
+        vm.prank(OmniConstants.OMNI_SYSTEM_CONTRACT);
+        sentinel.react(settledRec);
+        assertEq(sentinel.completedLoops(), 1, "triplicate replay must not double-increment completedLoops");
+        assertEq(sentinel.activePositionCount(), 0, "activePositionCount must still remain 0");
+
+        // 5. Edge case: BracketSettled arriving for a CANCELLED position
+        vm.recordLogs();
+        vm.prank(trader);
+        uint256 posId2 = vault.openBracketPosition(
+            OmniBracketVault.OrderParams({
+                isBaseToQuote: true,
+                amountIn: 1e18,
+                hardStopPriceE18: 2_500e18,
+                takeProfitPriceE18: 3_200e18,
+                trailingStopBps: 0,
+                maxDislocationBps: 0,
+                maxSlippageBps: 150,
+                enableCrossPoolArb: false,
+                cooldownSec: 2,
+                ttlSeconds: 600
+            })
+        );
+        _propagateLogs(vm.getRecordedLogs(), OmniConstants.BASE_SEPOLIA_CHAIN_ID, 1);
+        assertEq(sentinel.activePositionCount(), 1);
+
+        // Cancel posId2
+        vm.recordLogs();
+        vm.prank(trader);
+        vault.cancelPosition(posId2);
+        _propagateLogs(vm.getRecordedLogs(), OmniConstants.BASE_SEPOLIA_CHAIN_ID, 1);
+        assertEq(sentinel.activePositionCount(), 0);
+        assertEq(uint8(sentinel.getTrackedPosition(posId2).status), uint8(PositionStatus.CANCELLED));
+
+        // Replay rogue BracketSettled for CANCELLED posId2
+        settledRec.topic1 = posId2;
+        vm.prank(OmniConstants.OMNI_SYSTEM_CONTRACT);
+        sentinel.react(settledRec);
+        assertEq(sentinel.completedLoops(), 1, "BracketSettled on CANCELLED position must be ignored");
+        assertEq(sentinel.activePositionCount(), 0);
+        assertEq(uint8(sentinel.getTrackedPosition(posId2).status), uint8(PositionStatus.CANCELLED));
+
+        // 6. Edge case: untracked posId=999
+        settledRec.topic1 = 999;
+        vm.prank(OmniConstants.OMNI_SYSTEM_CONTRACT);
+        sentinel.react(settledRec);
+        assertEq(sentinel.completedLoops(), 1, "untracked BracketSettled must be ignored");
+        assertEq(sentinel.activePositionCount(), 0);
+        assertEq(uint8(sentinel.getTrackedPosition(999).status), uint8(PositionStatus.NONE));
     }
 }

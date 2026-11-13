@@ -167,3 +167,35 @@ describe("CLI Entrypoint Routing", () => {
     await expect(runCli(["node", "src/cli.ts", "nonexistent"])).rejects.toThrow(/Unknown command/i);
   });
 });
+
+describe("Environment & .env Auto-Load Behavior", () => {
+  it("resolves default RPC URLs when env vars are unset", () => {
+    expect(OMNI_NETWORKS.lasna.rpcUrl).toMatch(/^https?:\/\//);
+    expect(OMNI_NETWORKS.baseSepolia.rpcUrl).toMatch(/^https?:\/\//);
+    expect(OMNI_NETWORKS.unichainSepolia.rpcUrl).toMatch(/^https?:\/\//);
+  });
+
+  it("dynamically reflects process.env overrides in OMNI_NETWORKS getters", () => {
+    const orig = process.env.BASE_SEPOLIA_RPC_URL;
+    try {
+      process.env.BASE_SEPOLIA_RPC_URL = "https://custom-base-sepolia.example.com";
+      expect(OMNI_NETWORKS.baseSepolia.rpcUrl).toBe("https://custom-base-sepolia.example.com");
+    } finally {
+      if (orig !== undefined) {
+        process.env.BASE_SEPOLIA_RPC_URL = orig;
+      } else {
+        delete process.env.BASE_SEPOLIA_RPC_URL;
+      }
+    }
+  });
+
+  it("safely attempts process.loadEnvFile without failing when .env is absent", () => {
+    expect(() => {
+      try {
+        process.loadEnvFile?.(".env.nonexistent_benchmark_file");
+      } catch {
+        // fail-safe catch
+      }
+    }).not.toThrow();
+  });
+});

@@ -309,16 +309,28 @@ contract OmniSentinelReactive is AbstractReactive {
 
     function _handlePositionCancelled(uint256 posId_) internal {
         TrackedPosition storage pos = trackedPositions[posId_];
-        if (pos.status == PositionStatus.NONE || pos.status == PositionStatus.SETTLED) return;
+        if (
+            pos.status == PositionStatus.NONE ||
+            pos.status == PositionStatus.SETTLED ||
+            pos.status == PositionStatus.CANCELLED ||
+            pos.status == PositionStatus.EXPIRED
+        ) return;
         pos.status = PositionStatus.CANCELLED;
         _removeActive(posId_);
     }
 
     function _handleBracketSettled(LogRecord calldata log_) internal {
         uint256 posId = log_.topic1;
+        TrackedPosition storage pos = trackedPositions[posId];
+        if (
+            pos.status == PositionStatus.NONE ||
+            pos.status == PositionStatus.SETTLED ||
+            pos.status == PositionStatus.CANCELLED ||
+            pos.status == PositionStatus.EXPIRED
+        ) return;
+
         SettledEventData memory s = abi.decode(log_.data, (SettledEventData));
 
-        TrackedPosition storage pos = trackedPositions[posId];
         pos.status = PositionStatus.SETTLED;
         pos.inFlightSince = 0;
         _removeActive(posId);
@@ -331,14 +343,13 @@ contract OmniSentinelReactive is AbstractReactive {
 
     function _handleSettlementDeferred(LogRecord calldata log_) internal {
         uint256 posId = log_.topic1;
-        (, , , uint256 deferredAtTs) = abi.decode(log_.data, (uint8, uint256, uint256, uint256));
-
         TrackedPosition storage pos = trackedPositions[posId];
-        if (pos.status == PositionStatus.IN_FLIGHT) {
-            pos.status = PositionStatus.ACTIVE;
-            pos.inFlightSince = 0;
-            pos.lastTriggerAt = _toUint64(deferredAtTs);
-        }
+        if (pos.status != PositionStatus.IN_FLIGHT) return;
+
+        (, , , uint256 deferredAtTs) = abi.decode(log_.data, (uint8, uint256, uint256, uint256));
+        pos.status = PositionStatus.ACTIVE;
+        pos.inFlightSince = 0;
+        pos.lastTriggerAt = _toUint64(deferredAtTs);
     }
 
     function _handlePoolTick(LogRecord calldata log_) internal {

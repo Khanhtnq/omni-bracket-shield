@@ -1,3 +1,9 @@
+try {
+  process.loadEnvFile?.(".env");
+} catch {
+  // .env is optional in CI / read-only benchmark environments
+}
+
 import { formatEther, parseGwei, type Address, type Hex } from "viem";
 import { runDoctorSuite } from "./inspector.js";
 import { runLatencyBenchmark } from "./latency-benchmark.js";
@@ -93,7 +99,7 @@ function handleFeeCalc(args: string[]): void {
   console.log(`Estimated Fee (ETH)  : ${formatEther(quote.totalFeeWei)} ETH @ ${gweiArg} gwei`);
 }
 
-async function handleLiveLoop(): Promise<void> {
+async function handleLiveLoop(args: string[]): Promise<void> {
   const pk = process.env.DEPLOYER_PRIVATE_KEY as Hex | undefined;
   if (!pk) {
     console.log(
@@ -119,45 +125,79 @@ async function handleLiveLoop(): Promise<void> {
     return;
   }
 
-  const res = await executeAndMeasureLiveLoop({
-    privateKeyHex: pk,
-    wethAddress: weth,
-    poolAddress: pool,
-    unichainPoolAddress: uniPool,
-    vaultAddress: vault,
-    sentinelAddress: sentinel,
-  });
+  const runAllThree = args.includes("--all-three") || args.includes("--all");
+  const scenarios = runAllThree
+    ? [
+        {
+          scenarioLabel: "Loop 1 :: Hard Stop-Loss ($3,000 -> $2,820)",
+          triggerPriceE18: 2_820_000_000_000_000_000_000n,
+        },
+        {
+          scenarioLabel: "Loop 2 :: Take-Profit ($3,000 -> $3,350)",
+          triggerPriceE18: 3_350_000_000_000_000_000_000n,
+        },
+        {
+          scenarioLabel: "Loop 3 :: Dynamic Trailing Stop ($3,000 -> $3,220 rally -> $3,080 pullback)",
+          rallyPriceE18: 3_220_000_000_000_000_000_000n,
+          triggerPriceE18: 3_080_000_000_000_000_000_000n,
+        },
+      ]
+    : [
+        {
+          scenarioLabel: "Hard Stop-Loss ($3,000 -> $2,820)",
+          triggerPriceE18: 2_820_000_000_000_000_000_000n,
+        },
+      ];
 
-  console.log("\n=== LIVE REACTIVE OMNI FULL-LOOP SETTLEMENT RECORDED (DoraHacks Q2 Proof) ===");
-  console.log(`Position ID                : #${res.positionId.toString()}`);
-  if (res.unichainConfirmTxHash) {
+  for (const s of scenarios) {
+    const res = await executeAndMeasureLiveLoop({
+      privateKeyHex: pk,
+      wethAddress: weth,
+      poolAddress: pool,
+      unichainPoolAddress: uniPool,
+      vaultAddress: vault,
+      sentinelAddress: sentinel,
+      scenarioLabel: s.scenarioLabel,
+      rallyPriceE18: s.rallyPriceE18,
+      triggerPriceE18: s.triggerPriceE18,
+    });
+
+    console.log(`\n=== LIVE REACTIVE OMNI FULL-LOOP SETTLEMENT RECORDED (${res.scenarioLabel}) ===`);
+    console.log(`Position ID                : #${res.positionId.toString()}`);
+    if (res.rallySetupTxHash) {
+      console.log(
+        `0a. Rally Ratchet Tx (Base): https://sepolia.basescan.org/tx/${res.rallySetupTxHash}`
+      );
+    }
+    if (res.unichainConfirmTxHash) {
+      console.log(
+        `0b. Unichain Reference Tx  : https://sepolia.uniscan.xyz/tx/${res.unichainConfirmTxHash}`
+      );
+    }
     console.log(
-      `0. Unichain Reference Tx   : https://sepolia.uniscan.xyz/tx/${res.unichainConfirmTxHash}`
+      `1. Origin Event Tx (Base)  : https://sepolia.basescan.org/tx/${res.originTriggerTxHash}`
+    );
+    console.log(
+      `2. Reactive Tx (Lasna)     : ${
+        res.lasnaReactiveTxHash
+          ? `https://lasna.reactscan.net/tx/${res.lasnaReactiveTxHash}`
+          : "Pending indexer lookup via SYSTEM.getCallbacks"
+      }`
+    );
+    console.log(
+      `3. Callback Tx (Base)      : ${
+        res.destinationCallbackTxHash
+          ? `https://sepolia.basescan.org/tx/${res.destinationCallbackTxHash}`
+          : "Confirmed on-chain (PositionStatus.SETTLED)"
+      }`
+    );
+    console.log(`Wall-Clock Loop Latency    : ${res.wallClockElapsedMs} ms`);
+    console.log(`On-Chain Timestamp Delta   : ${res.onChainLoopLatencySec.toString()} s`);
+    console.log(`Settled Proceeds           : ${res.settledAmountOutUsdc} vUSDC`);
+    console.log(
+      `Lasna Sentinel Counters    : dispatched=${res.lasnaCallbacksDispatched} | completedLoops=${res.lasnaCompletedLoops}`
     );
   }
-  console.log(
-    `1. Origin Event Tx (Base)  : https://sepolia.basescan.org/tx/${res.originTriggerTxHash}`
-  );
-  console.log(
-    `2. Reactive Tx (Lasna)     : ${
-      res.lasnaReactiveTxHash
-        ? `https://lasna.reactscan.net/tx/${res.lasnaReactiveTxHash}`
-        : "Pending indexer lookup via SYSTEM.getCallbacks"
-    }`
-  );
-  console.log(
-    `3. Callback Tx (Base)      : ${
-      res.destinationCallbackTxHash
-        ? `https://sepolia.basescan.org/tx/${res.destinationCallbackTxHash}`
-        : "Confirmed on-chain (PositionStatus.SETTLED)"
-    }`
-  );
-  console.log(`Wall-Clock Loop Latency    : ${res.wallClockElapsedMs} ms`);
-  console.log(`On-Chain Timestamp Delta   : ${res.onChainLoopLatencySec.toString()} s`);
-  console.log(`Settled Proceeds           : ${res.settledAmountOutUsdc} vUSDC`);
-  console.log(
-    `Lasna Sentinel Counters    : dispatched=${res.lasnaCallbacksDispatched} | completedLoops=${res.lasnaCompletedLoops}`
-  );
 }
 
 export async function runCli(argv: string[]): Promise<void> {
@@ -173,7 +213,7 @@ export async function runCli(argv: string[]): Promise<void> {
       handleFeeCalc(argv.slice(3));
       break;
     case "live-loop":
-      await handleLiveLoop();
+      await handleLiveLoop(argv.slice(3));
       break;
     default:
       throw new Error(`Unknown command '${cmd}'. Expected: doctor | benchmark | fee-calc | live-loop`);

@@ -1,5 +1,11 @@
 import { defineChain, encodeFunctionData, parseAbi, type Chain, type Hex } from "viem";
 
+try {
+  process.loadEnvFile?.(".env");
+} catch {
+  // .env is optional in CI / read-only benchmark environments
+}
+
 export interface OmniNetworkSpec {
   key: "lasna" | "baseSepolia" | "unichainSepolia";
   name: string;
@@ -30,7 +36,9 @@ export const OMNI_NETWORKS: Record<OmniNetworkSpec["key"], OmniNetworkSpec> = {
     key: "lasna",
     name: "Reactive Lasna (Omni CometBFT)",
     chainId: 5318007,
-    rpcUrl: process.env.LASNA_RPC_URL || "https://lasna-rpc.rnk.dev/",
+    get rpcUrl() {
+      return process.env.LASNA_RPC_URL || "https://lasna-rpc.rnk.dev/";
+    },
     explorerUrl: "https://lasna.reactscan.net",
     nativeSymbol: "lREACT",
     nominalBlockTimeMs: 1000,
@@ -40,7 +48,9 @@ export const OMNI_NETWORKS: Record<OmniNetworkSpec["key"], OmniNetworkSpec> = {
     key: "baseSepolia",
     name: "Base Sepolia (Denim 200ms)",
     chainId: 84532,
-    rpcUrl: process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org",
+    get rpcUrl() {
+      return process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org";
+    },
     explorerUrl: "https://sepolia.basescan.org",
     nativeSymbol: "ETH",
     nominalBlockTimeMs: 200,
@@ -51,7 +61,9 @@ export const OMNI_NETWORKS: Record<OmniNetworkSpec["key"], OmniNetworkSpec> = {
     key: "unichainSepolia",
     name: "Unichain Sepolia (1s)",
     chainId: 1301,
-    rpcUrl: process.env.UNICHAIN_SEPOLIA_RPC_URL || "https://sepolia.unichain.org",
+    get rpcUrl() {
+      return process.env.UNICHAIN_SEPOLIA_RPC_URL || "https://sepolia.unichain.org";
+    },
     explorerUrl: "https://sepolia.uniscan.xyz",
     nativeSymbol: "ETH",
     nominalBlockTimeMs: 1000,

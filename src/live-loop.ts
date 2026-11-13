@@ -1,3 +1,9 @@
+try {
+  process.loadEnvFile?.(".env");
+} catch {
+  // .env is optional in CI / read-only benchmark environments
+}
+
 import {
   createPublicClient,
   createWalletClient,
@@ -53,8 +59,10 @@ const FAUCET_ABI = parseAbi([
 ]);
 
 export interface LiveLoopMeasurement {
+  scenarioLabel: string;
   positionId: bigint;
   originTriggerTxHash: Hex;
+  rallySetupTxHash?: Hex;
   unichainConfirmTxHash?: Hex;
   lasnaReactiveTxHash?: Hex;
   destinationCallbackTxHash?: Hex;
@@ -130,7 +138,9 @@ export async function executeAndMeasureLiveLoop(opts: {
   unichainPoolAddress?: Address;
   vaultAddress: Address;
   sentinelAddress: Address;
+  scenarioLabel?: string;
   baselinePriceE18?: bigint;
+  rallyPriceE18?: bigint;
   triggerPriceE18?: bigint;
   pollTimeoutMs?: number;
 }): Promise<LiveLoopMeasurement> {
@@ -254,6 +264,28 @@ export async function executeAndMeasureLiveLoop(opts: {
   // Wait briefly so Lasna indexes `PositionArmed` before firing the price trigger
   await new Promise((r) => setTimeout(r, 2_200));
 
+  let rallySetupTxHash: Hex | undefined;
+  if (opts.rallyPriceE18) {
+    if (opts.unichainPoolAddress) {
+      const uniRallyHash = await uniWallet.writeContract({
+        address: opts.unichainPoolAddress,
+        abi: POOL_LIVE_ABI,
+        functionName: "syncSpotPrice",
+        args: [opts.rallyPriceE18],
+      });
+      await uniPublic.waitForTransactionReceipt({ hash: uniRallyHash });
+    }
+    rallySetupTxHash = await baseWallet.writeContract({
+      address: opts.poolAddress,
+      abi: POOL_LIVE_ABI,
+      functionName: "syncSpotPrice",
+      args: [opts.rallyPriceE18],
+    });
+    await basePublic.waitForTransactionReceipt({ hash: rallySetupTxHash });
+    // Allow Lasna to ratchet high-water mark & satisfy 2s cooldown before pullback tick
+    await new Promise((r) => setTimeout(r, 2_500));
+  }
+
   const lasnaStartBlock = await lasnaPublic.getBlockNumber();
   const targetTrigger = opts.triggerPriceE18 ?? 2_820_000_000_000_000_000_000n;
 
@@ -293,7 +325,31 @@ export async function executeAndMeasureLiveLoop(opts: {
     // PositionStatus.SETTLED === 3
     if (Number(pos.status) === 3) {
       const wallClockElapsedMs = Math.round(performance.now() - tStart);
-      const [lasnaCallbacksDispatched, lasnaCompletedLoops, lasnaLogs, baseSettledLogs] =
+      // Allow up to ~2.5s if Lasna RPC log indexing / LoopConfirmed feedback is still finalizing
+      let lasnaLogs = await lasnaPublic
+        .getLogs({
+          address: opts.sentinelAddress,
+          event: CALLBACK_DISPATCHED_EVENT,
+          args: { positionId },
+          fromBlock: lasnaStartBlock > 5n ? lasnaStartBlock - 5n : 0n,
+          toBlock: "latest",
+        })
+        .catch(() => []);
+
+      if (lasnaLogs.length === 0) {
+        await new Promise((r) => setTimeout(r, 1_500));
+        lasnaLogs = await lasnaPublic
+          .getLogs({
+            address: opts.sentinelAddress,
+            event: CALLBACK_DISPATCHED_EVENT,
+            args: { positionId },
+            fromBlock: lasnaStartBlock > 5n ? lasnaStartBlock - 5n : 0n,
+            toBlock: "latest",
+          })
+          .catch(() => []);
+      }
+
+      const [lasnaCallbacksDispatched, lasnaCompletedLoops, baseSettledLogs] =
         await Promise.all([
           lasnaPublic.readContract({
             address: opts.sentinelAddress,
@@ -305,15 +361,6 @@ export async function executeAndMeasureLiveLoop(opts: {
             abi: SENTINEL_LIVE_ABI,
             functionName: "completedLoops",
           }),
-          lasnaPublic
-            .getLogs({
-              address: opts.sentinelAddress,
-              event: CALLBACK_DISPATCHED_EVENT,
-              args: { positionId },
-              fromBlock: lasnaStartBlock > 5n ? lasnaStartBlock - 5n : 0n,
-              toBlock: "latest",
-            })
-            .catch(() => []),
           basePublic
             .getLogs({
               address: opts.vaultAddress,
@@ -333,8 +380,10 @@ export async function executeAndMeasureLiveLoop(opts: {
           : undefined;
 
       return {
+        scenarioLabel: opts.scenarioLabel ?? "Hard Stop-Loss ($3,000 -> $2,820)",
         positionId,
         originTriggerTxHash,
+        rallySetupTxHash,
         unichainConfirmTxHash,
         lasnaReactiveTxHash,
         destinationCallbackTxHash,
